@@ -434,13 +434,15 @@ int main(int argc, char **argv) {
     map_image();
     rt_fpu_init();
 
-    /* the game only: a picture or video file named on the command line (e.g. dragged onto the exe) is the camera.
+    /* the game only: --fullscreen starts in fullscreen (same as VEND_FULLSCREEN=1), and
+       a picture or video file named on the command line (e.g. dragged onto the exe) is the camera.
        Resolved here, before the chdir into the data folder; the helper tools take file arguments of their own. */
     if (guest_is_game) {
         int k, n = 1;
         for (k = 1; k < argc; k++) {
             DWORD at = GetFileAttributesA(argv[k]);
-            if (argv[k][0] != '-' && at != INVALID_FILE_ATTRIBUTES && !(at & FILE_ATTRIBUTE_DIRECTORY)) {
+            if (!_stricmp(argv[k], "--fullscreen") || !_stricmp(argv[k], "-fullscreen")) _putenv("VEND_FULLSCREEN=1");
+            else if (argv[k][0] != '-' && at != INVALID_FILE_ATTRIBUTES && !(at & FILE_ATTRIBUTE_DIRECTORY)) {
                 static char ev[MAX_PATH + 16];
                 char full[MAX_PATH];
                 if (!GetFullPathNameA(argv[k], sizeof full, full, 0)) snprintf(full, sizeof full, "%s", argv[k]);

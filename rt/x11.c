@@ -117,6 +117,15 @@ static void fb_put(int x, int y, u16 p) {   /* every framebuffer write goes thro
 
 void x11_screen_size(int *w, int *h) { *w = SW; *h = SH; }
 
+/* where a sw x sh picture goes in a w x h client area: as large as fits with its aspect kept, centred
+   (black bars fill the rest, e.g. 4:3 on a 16:9 screen in fullscreen) */
+static void view_rect(int w, int h, int sw, int sh, RECT *v) {
+    int vw = w, vh = (int)((long long)w * sh / sw);
+    if (vh > h) { vh = h; vw = (int)((long long)h * sw / sh); }
+    v->left = (w - vw) / 2; v->top = (h - vh) / 2;
+    v->right = v->left + vw; v->bottom = v->top + vh;
+}
+
 void x11_cam_rect(int x, int y, int w, int h) {
     if (!fb) return;
     EnterCriticalSection(&xcs);
@@ -173,19 +182,48 @@ void x11_cam_frame(const u32 *px, int w, int h, int stride, int mirror, int vfli
         }
     LeaveCriticalSection(&xcs);
     if (hwnd) {   /* repaint just the video window */
-        RECT rc, r;
+        RECT rc, v, r;
+        int vw, vh;
         GetClientRect(hwnd, &rc);
-        r.left = rx * rc.right / SW; r.top = ry * rc.bottom / SH;
-        r.right = (rx + rw) * rc.right / SW + 1; r.bottom = (ry + rh) * rc.bottom / SH + 1;
+        view_rect(rc.right, rc.bottom, SW, SH, &v);
+        vw = v.right - v.left; vh = v.bottom - v.top;
+        r.left = v.left + rx * vw / SW; r.top = v.top + ry * vh / SH;
+        r.right = v.left + (rx + rw) * vw / SW + 1; r.bottom = v.top + (ry + rh) * vh / SH + 1;
         InvalidateRect(hwnd, &r, FALSE);
     }
+}
+
+/* Fullscreen: the window loses its frame and covers the monitor it is on. The video mode is not changed;
+   the picture is scaled to fit with bars (see view_rect). F11 / Alt+Enter toggle it, VEND_FULLSCREEN=1 starts in it. */
+#define WM_APP_FULLSCREEN (WM_APP + 1)
+static int fullscreen, eat_enter_up;
+static WINDOWPLACEMENT win_place;
+static void set_fullscreen(int on) {
+    LONG st = GetWindowLongA(hwnd, GWL_STYLE);
+    if (!on == !fullscreen) return;
+    if (on) {
+        MONITORINFO mi;
+        mi.cbSize = sizeof mi;
+        win_place.length = sizeof win_place;
+        if (!GetWindowPlacement(hwnd, &win_place) || !GetMonitorInfoA(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi)) return;
+        SetWindowLongA(hwnd, GWL_STYLE, st & ~WS_OVERLAPPEDWINDOW);
+        SetWindowPos(hwnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left,
+                     mi.rcMonitor.bottom - mi.rcMonitor.top, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    } else {
+        SetWindowLongA(hwnd, GWL_STYLE, st | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(hwnd, &win_place);
+        SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+    fullscreen = on;
+    InvalidateRect(hwnd, 0, FALSE);
+    rt_logf("fullscreen %s\n", on ? "on" : "off");
 }
 
 static LRESULT CALLBACK wndproc(HWND h, UINT m, WPARAM w, LPARAM l) {
     switch (m) {
     case WM_PAINT: {
         PAINTSTRUCT ps;
-        RECT rc;
+        RECT rc, v;
         BITMAPINFO bi;
         int i;
         static u16 *snap;
@@ -216,8 +254,17 @@ static LRESULT CALLBACK wndproc(HWND h, UINT m, WPARAM w, LPARAM l) {
         bi.bmiHeader.biHeight = -sh;
         bi.bmiHeader.biPlanes = 1;
         bi.bmiHeader.biBitCount = 32;
+        view_rect(rc.right, rc.bottom, sw, sh, &v);
+        {   /* bars around the picture */
+            HBRUSH k = (HBRUSH)GetStockObject(BLACK_BRUSH);
+            RECT b;
+            if (v.top > 0) { SetRect(&b, 0, 0, rc.right, v.top); FillRect(dc, &b, k); }
+            if (v.bottom < rc.bottom) { SetRect(&b, 0, v.bottom, rc.right, rc.bottom); FillRect(dc, &b, k); }
+            if (v.left > 0) { SetRect(&b, 0, v.top, v.left, v.bottom); FillRect(dc, &b, k); }
+            if (v.right < rc.right) { SetRect(&b, v.right, v.top, rc.right, v.bottom); FillRect(dc, &b, k); }
+        }
         SetStretchBltMode(dc, COLORONCOLOR);
-        StretchDIBits(dc, 0, 0, rc.right, rc.bottom, 0, 0, sw, sh, px32, &bi, DIB_RGB_COLORS, SRCCOPY);
+        StretchDIBits(dc, v.left, v.top, v.right - v.left, v.bottom - v.top, 0, 0, sw, sh, px32, &bi, DIB_RGB_COLORS, SRCCOPY);
         EndPaint(h, &ps);
         return 0;
     }
@@ -237,17 +284,33 @@ static LRESULT CALLBACK wndproc(HWND h, UINT m, WPARAM w, LPARAM l) {
         break;
     case WM_KEYDOWN: case WM_SYSKEYDOWN:
         if (w == VK_F4 && (GetKeyState(VK_MENU) & 0x8000)) break;
+        if (w == VK_F11 || (w == VK_RETURN && (l & (1 << 29)))) {   /* F11 or Alt+Enter: fullscreen on/off */
+            if (!(l & (1 << 30))) set_fullscreen(!fullscreen);       /* not again on auto-repeat */
+            if (w == VK_RETURN) eat_enter_up = 1;
+            return 0;
+        }
         key_event(1, w, l);
         return 0;
     case WM_KEYUP: case WM_SYSKEYUP:
+        if (w == VK_F11) return 0;
+        if (w == VK_RETURN && eat_enter_up) { eat_enter_up = 0; return 0; }
         key_event(0, w, l);
         return 0;
+    case WM_SYSCHAR:
+        if (w == '\r') return 0;   /* Alt+Enter: no beep */
+        break;
+    case WM_APP_FULLSCREEN:
+        set_fullscreen((int)w);
+        return 0;
     case WM_LBUTTONDOWN: case WM_MBUTTONDOWN: case WM_RBUTTONDOWN: {
-        RECT rc;
+        RECT rc, v;
+        int mx = (short)LOWORD(l), my = (short)HIWORD(l);
         u32 x, y, b = m == WM_LBUTTONDOWN ? 1 : m == WM_MBUTTONDOWN ? 2 : 3;
         GetClientRect(h, &rc);
-        x = (u32)(LOWORD(l) * SW / (rc.right ? rc.right : 1));
-        y = (u32)(HIWORD(l) * SH / (rc.bottom ? rc.bottom : 1));
+        view_rect(rc.right, rc.bottom, SW, SH, &v);
+        if (mx < v.left || my < v.top || mx >= v.right || my >= v.bottom) return 0;   /* on a bar */
+        x = (u32)((mx - v.left) * SW / (v.right - v.left));
+        y = (u32)((my - v.top) * SH / (v.bottom - v.top));
         ev_push(4, b, cur_state(), x, y);
         return 0;
     }
@@ -274,6 +337,7 @@ static DWORD WINAPI ui_thread(void *arg) {
     (void)arg;
     if (scale < 1) scale = 1;
     memset(&wc, 0, sizeof wc);
+    wc.style = CS_HREDRAW | CS_VREDRAW;   /* resizing moves the bars: repaint everything */
     wc.lpfnWndProc = wndproc;
     wc.hInstance = GetModuleHandleA(0);
     wc.hCursor = LoadCursorA(0, IDC_ARROW);
@@ -282,7 +346,7 @@ static DWORD WINAPI ui_thread(void *arg) {
     r.left = 0; r.top = 0;   /* sized for the largest video mode (800x600); smaller modes are scaled up */
     r.right = (SW < 800 ? 800 : SW) * scale; r.bottom = (SH < 600 ? 600 : SH) * scale;
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
-    hwnd = CreateWindowA("SketchBook", "Sketch Book  [C: coin, 1-8: buttons, drop a picture here to sketch it]",
+    hwnd = CreateWindowA("SketchBook", "Sketch Book  [C: coin, 1-8: buttons, F11: fullscreen, drop a picture here to sketch it]",
                          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, 0, 0, wc.hInstance, 0);
     SetTimer(hwnd, PRESENT_TIMER, 15, 0);
     {   /* drag and drop of pictures (shell32 loaded on demand: nothing else needs it) */
@@ -304,6 +368,7 @@ static void ensure_window(void) {
     WaitForSingleObject(ui_ready, INFINITE);
     ShowWindow(hwnd, SW_SHOWNORMAL);
     UpdateWindow(hwnd);
+    if (getenv("VEND_FULLSCREEN") && atoi(getenv("VEND_FULLSCREEN"))) PostMessageA(hwnd, WM_APP_FULLSCREEN, 1, 0);
 }
 
 /* ---------------- GC */

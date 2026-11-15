@@ -33,6 +33,7 @@ Requirements: Python 3 with `capstone`, and MinGW gcc in `C:\MinGW\bin`.
 Run `v8mnu22b.exe`. It looks for the game data in `vend\` next to the exe; set `VEND_ROOT` to use another folder.
 
 - **Controls:** `C` adds a coin. `1`–`8` are the cabinet buttons.
+- **Fullscreen:** `F11` or `Alt+Enter` toggles it. Start with `--fullscreen` or set `VEND_FULLSCREEN=1`. The picture keeps its 4:3 shape with black bars.
 - **Camera picture:** to sketch a picture instead of the camera, do any of these:
   - drop it on the window
   - give it on the command line

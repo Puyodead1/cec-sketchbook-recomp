@@ -7,6 +7,7 @@ fake dongle and the helper tools in vend\bin). No install, no extra DLLs.
 Controls
   C            insert coin
   1 - 8        booth panel buttons
+  F11          fullscreen on/off (Alt+Enter works too)
   Ctrl+key     type a key straight to the game
 
 Prints
@@ -39,7 +40,11 @@ Sound
 
 Screen
   The game switches between 640x480 and 800x600 itself; the window keeps its
-  size and scales the picture. You can resize the window freely.
+  size and scales the picture. You can resize the window freely; the
+  picture keeps its 4:3 shape, with black bars if the window is wider/taller.
+  F11 or Alt+Enter switches fullscreen on and off (on the monitor the window
+  is on). To start in fullscreen:
+      v8mnu22b.exe --fullscreen      (or set VEND_FULLSCREEN=1)
       VEND_SCALE=2      open the window at twice the size
       VEND_ROOT         use a data folder other than .\vend
 
