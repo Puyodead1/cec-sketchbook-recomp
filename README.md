@@ -15,7 +15,7 @@ The original game binary and data are **not** included. Supply them yourself fro
 | `buildtool.ps1` | Recompiles the helper programs in `vend\bin` (tgascale, voronoi, …) the same way. |
 | `fixlinks.ps1` | Replaces the WSL symlinks in `vend\` with junctions and copies that Win32 can open. |
 | `package.ps1`, `dist/README.txt` | Builds `release\SketchBook-win32.7z` (exe, trimmed `vend\`, end-user README). |
-| `linux/` | Reference setup for running the original game under WSL. `uibemu.py` emulates the UIB button/coin box (serial protocol); `dongle/dongle.c` is an `LD_PRELOAD` parallel-port dongle emulator (built and installed by `dongle/install.sh`); `dongle/dictkey.py` decrypts `dict.db`; `run_vend.sh` starts the game in a Fedora Core 5 rootfs. The rootfs path (`F=` in the scripts) is machine-specific. |
+| `linux/` | Reference setup for running the original game under WSL. `uibemu.py` emulates the UIB button/coin box (serial protocol); `dongle/dongle.c` is an `LD_PRELOAD` parallel-port dongle emulator (built and installed by `dongle/install.sh`); `dongle/dictkey.py` decrypts `dict.db`; `run_vend.sh` starts the game in a Fedora Core 5 rootfs. Set `ROOTFS` to the extracted rootfs before running them. |
 
 ## Building
 

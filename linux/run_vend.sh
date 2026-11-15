@@ -2,7 +2,7 @@
 # Run the Sketch Book vend app inside the extracted Fedora Core 5 rootfs (WSL, as root).
 # Usage: sudo bash run_vend.sh [timeout_seconds]   (0 = no timeout)
 set -u
-F=/home/puyodead1/sketch/rootfs
+F=${ROOTFS:?set ROOTFS to the extracted Fedora Core 5 rootfs}
 T=${1:-0}
 
 mountpoint -q $F/proc || mount -t proc proc $F/proc
