@@ -231,7 +231,7 @@ DECL_IMP(fileno) {
 DECL_IMP(tmpfile) {
     static volatile LONG seq;
     char p[MAX_PATH];
-    snprintf(p, sizeof p, "tmp\tf%lu_%ld.tmp", GetCurrentProcessId(), InterlockedIncrement(&seq));
+    snprintf(p, sizeof p, "%s\\tmp\\tf%lu_%ld.tmp", rt_root, GetCurrentProcessId(), InterlockedIncrement(&seq));
     RET(fopen(p, "w+bD"));
 }
 DECL_IMP(scanf) {
